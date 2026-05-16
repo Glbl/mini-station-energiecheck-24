@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   }
 
   await resend.emails.send({
-    from: 'Mini Station <noreply@energiecheck-24.de>',
+    from: 'Mini Station <tarif@energiecheck-24.de>',
     to: process.env.NOTIFY_EMAIL!,
     subject: `🎉 Neue Anmeldung: ${name}`,
     html: `
@@ -79,6 +79,26 @@ export async function POST(req: NextRequest) {
       <p><strong>Platz Nr.:</strong> ${(count ?? 0) + 1} von 100</p>
     `,
   });
+  // Email 2 — Confirmación al cliente (nuevo)
+await resend.emails.send({
+  from: 'Energiecheck 24 <noreply@energiecheck-24.de>',
+  to: email,
+  subject: '✅ Ihre Anmeldung wurde erhalten – Mini Station',
+  html: `
+    <h2>Hallo ${name},</h2>
+    <p>Vielen Dank für Ihre Anmeldung zum kostenlosen Mini Station Testprogramm!</p>
+    ${isFreeOffer
+      ? `<p>🎉 <strong>Glückwunsch!</strong> Sie gehören zu den ersten 100 Teilnehmern und erhalten das komplette Paket kostenlos.</p>`
+      : `<p>Wir haben Ihre Anfrage erhalten und melden uns so bald wie möglich bei Ihnen.</p>`
+    }
+    <p><strong>Ihre Angaben:</strong></p>
+    <ul>
+      <li>Name: ${name}</li>
+      <li>Bevorzugte Kontaktzeit: ${preferred_time}</li>
+    </ul>
+    <p>Mit freundlichen Grüßen,<br>Das Energiecheck-24 Team</p>
+  `,
+});
 
   return NextResponse.json(
     { success: true, is_free_offer: isFreeOffer },
