@@ -31,7 +31,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   // ✅ Resend se inicializa AQUÍ dentro, no fuera
-  const resend = new Resend(process.env.RESEND_API_KEY!);
+  const resend = new Resend(process.env.RESEND_API_KEY_2!);
 
   const body = await req.json();
   const { name, email, preferred_time } = body;
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   await resend.emails.send({
     from: 'Mini Station <noreply@energiecheck-24.de>',
-    to: process.env.NOTIFICATION_EMAIL!,
+    to: process.env.NOTIFY_EMAIL!,
     subject: `🎉 Neue Anmeldung: ${name}`,
     html: `
       <h2>Neue Mini Station Anmeldung</h2>
