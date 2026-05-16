@@ -7,20 +7,16 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://energiecheck-24.myshopify.com',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// Preflight
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-// GET — conteo actual
 export async function GET() {
   const { count, error } = await supabase
     .from('mini_station_leads')
@@ -33,8 +29,10 @@ export async function GET() {
   return NextResponse.json({ count: count ?? 0 }, { headers: corsHeaders });
 }
 
-// POST — nuevo lead
 export async function POST(req: NextRequest) {
+  // ✅ Resend se inicializa AQUÍ dentro, no fuera
+  const resend = new Resend(process.env.RESEND_API_KEY!);
+
   const body = await req.json();
   const { name, email, preferred_time } = body;
 
@@ -69,7 +67,7 @@ export async function POST(req: NextRequest) {
   }
 
   await resend.emails.send({
-    from: 'Mini Station <tarif@energiecheck-24.de>',
+    from: 'Mini Station <noreply@energiecheck-24.de>',
     to: process.env.NOTIFICATION_EMAIL!,
     subject: `🎉 Neue Anmeldung: ${name}`,
     html: `
