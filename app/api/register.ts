@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
@@ -15,84 +15,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+// Preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
 
-  // 1. Maneja el preflight CORS
-  if (req.method === 'OPTIONS') {
-    return res.status(200).set(corsHeaders).end();
+// GET — conteo actual
+export async function GET() {
+  const { count, error } = await supabase
+    .from('mini_station_leads')
+    .select('*', { count: 'exact', head: true });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });
   }
 
-  // 2. Agrega CORS a todas las respuestas
-  Object.entries(corsHeaders).forEach(([key, value]) => {
-    res.setHeader(key, value);
+  return NextResponse.json({ count: count ?? 0 }, { headers: corsHeaders });
+}
+
+// POST — nuevo lead
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { name, email, preferred_time } = body;
+
+  if (!name || !email || !preferred_time) {
+    return NextResponse.json(
+      { error: 'Alle Felder sind erforderlich.' },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  const { count } = await supabase
+    .from('mini_station_leads')
+    .select('*', { count: 'exact', head: true });
+
+  const isFreeOffer = (count ?? 0) < 100;
+
+  const { error: insertError } = await supabase
+    .from('mini_station_leads')
+    .insert([{ name, email, preferred_time, is_free_offer: isFreeOffer }]);
+
+  if (insertError) {
+    if (insertError.code === '23505') {
+      return NextResponse.json(
+        { error: 'Diese E-Mail ist bereits registriert.' },
+        { status: 409, headers: corsHeaders }
+      );
+    }
+    return NextResponse.json(
+      { error: insertError.message },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+
+  await resend.emails.send({
+    from: 'Mini Station <noreply@energiecheck-24.de>',
+    to: process.env.NOTIFICATION_EMAIL!,
+    subject: `🎉 Neue Anmeldung: ${name}`,
+    html: `
+      <h2>Neue Mini Station Anmeldung</h2>
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>E-Mail:</strong> ${email}</p>
+      <p><strong>Kontaktzeit:</strong> ${preferred_time}</p>
+      <p><strong>Angebot:</strong> ${isFreeOffer ? '✅ Gratis-Paket' : '📩 Allgemeine Anfrage'}</p>
+      <p><strong>Platz Nr.:</strong> ${(count ?? 0) + 1} von 100</p>
+    `,
   });
 
-  // 3. GET — devuelve el conteo actual
-  if (req.method === 'GET') {
-    const { count, error } = await supabase
-      .from('mini_station_leads')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    return res.status(200).json({ count: count ?? 0 });
-  }
-
-  // 4. POST — registra un nuevo lead
-  if (req.method === 'POST') {
-    const { name, email, preferred_time } = req.body;
-
-    // Validación básica
-    if (!name || !email || !preferred_time) {
-      return res.status(400).json({ error: 'Alle Felder sind erforderlich.' });
-    }
-
-    // Verifica el cap de 100
-    const { count } = await supabase
-      .from('mini_station_leads')
-      .select('*', { count: 'exact', head: true });
-
-    const isFreeOffer = (count ?? 0) < 100;
-
-    // Inserta en Supabase
-    const { error: insertError } = await supabase
-      .from('mini_station_leads')
-      .insert([{ name, email, preferred_time, is_free_offer: isFreeOffer }]);
-
-    if (insertError) {
-      // Email duplicado
-      if (insertError.code === '23505') {
-        return res.status(409).json({ error: 'Diese E-Mail ist bereits registriert.' });
-      }
-      return res.status(500).json({ error: insertError.message });
-    }
-
-    // Envía email de notificación via Resend
-    await resend.emails.send({
-      from: 'Mini Station <tarif@energiecheck-24.de>',
-      to: process.env.NOTIFICATION_EMAIL!,
-      subject: `🎉 Neue Anmeldung: ${name}`,
-      html: `
-        <h2>Neue Mini Station Anmeldung</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>E-Mail:</strong> ${email}</p>
-        <p><strong>Kontaktzeit:</strong> ${preferred_time}</p>
-        <p><strong>Angebot:</strong> ${isFreeOffer ? '✅ Gratis-Paket' : '📩 Allgemeine Anfrage'}</p>
-        <p><strong>Platz Nr.:</strong> ${(count ?? 0) + 1} von 100</p>
-      `,
-    });
-
-    return res.status(200).json({
-      success: true,
-      is_free_offer: isFreeOffer,
-      message: isFreeOffer
-        ? 'Erfolgreich registriert! Sie erhalten das kostenlose Paket.'
-        : 'Anfrage erhalten! Wir melden uns bei Ihnen.',
-    });
-  }
-
-  // 5. Método no permitido
-  return res.status(405).json({ error: 'Method not allowed' });
+  return NextResponse.json(
+    { success: true, is_free_offer: isFreeOffer },
+    { headers: corsHeaders }
+  );
 }
