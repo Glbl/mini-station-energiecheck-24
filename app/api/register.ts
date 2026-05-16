@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   await resend.emails.send({
-    from: 'Mini Station <noreply@energiecheck-24.de>',
+    from: 'Mini Station <tarif@energiecheck-24.de>',
     to: process.env.NOTIFICATION_EMAIL!,
     subject: `🎉 Neue Anmeldung: ${name}`,
     html: `
