@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
@@ -8,100 +9,90 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-const CAP = 100;
-const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL!; // your email
+const corsHeaders = {
+  'Access-Control-Allow-Origin': 'https://energiecheck-24.myshopify.com',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-export default async function handler(req: Request) {
-  // CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': 'https://energiecheck-24.myshopify.com',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+export default async function handler(req: VercelRequest, res: VercelResponse) {
 
-  // Handle preflight
+  // 1. Maneja el preflight CORS
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers });
+    return res.status(200).set(corsHeaders).end();
   }
 
-  // GET — return current count
+  // 2. Agrega CORS a todas las respuestas
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
+
+  // 3. GET — devuelve el conteo actual
   if (req.method === 'GET') {
     const { count, error } = await supabase
       .from('mini_station_leads')
       .select('*', { count: 'exact', head: true });
 
-    if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
-
-    return new Response(JSON.stringify({ count: count ?? 0 }), { status: 200, headers });
-  }
-
-  // POST — save lead
-  if (req.method === 'POST') {
-    const body = await req.json();
-    const { name, email, preferred_time } = body;
-
-    if (!name || !email || !preferred_time) {
-      return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers });
+    if (error) {
+      return res.status(500).json({ error: error.message });
     }
 
-    // Get current count
+    return res.status(200).json({ count: count ?? 0 });
+  }
+
+  // 4. POST — registra un nuevo lead
+  if (req.method === 'POST') {
+    const { name, email, preferred_time } = req.body;
+
+    // Validación básica
+    if (!name || !email || !preferred_time) {
+      return res.status(400).json({ error: 'Alle Felder sind erforderlich.' });
+    }
+
+    // Verifica el cap de 100
     const { count } = await supabase
       .from('mini_station_leads')
       .select('*', { count: 'exact', head: true });
 
-    const isFreeOffer = (count ?? 0) < CAP;
+    const isFreeOffer = (count ?? 0) < 100;
 
-    // Insert lead
+    // Inserta en Supabase
     const { error: insertError } = await supabase
       .from('mini_station_leads')
-      .insert({ name, email, preferred_time, is_free_offer: isFreeOffer });
+      .insert([{ name, email, preferred_time, is_free_offer: isFreeOffer }]);
 
     if (insertError) {
-      // Handle duplicate email
+      // Email duplicado
       if (insertError.code === '23505') {
-        return new Response(JSON.stringify({ error: 'Email already registered' }), { status: 409, headers });
+        return res.status(409).json({ error: 'Diese E-Mail ist bereits registriert.' });
       }
-      return new Response(JSON.stringify({ error: insertError.message }), { status: 500, headers });
+      return res.status(500).json({ error: insertError.message });
     }
 
-    // Send email via Resend
+    // Envía email de notificación via Resend
     await resend.emails.send({
-      from: 'Mini Station <tarif@energiecheck-24.de>', // replace with your verified domain
-      to: NOTIFY_EMAIL,
-      subject: `🚀 Neue Anfrage${isFreeOffer ? ' (Gratis-Angebot)' : ''} – ${name}`,
+      from: 'Mini Station <tarif@energiecheck-24.de>',
+      to: process.env.NOTIFICATION_EMAIL!,
+      subject: `🎉 Neue Anmeldung: ${name}`,
       html: `
-        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-          <h2 style="color: #00C896;">Neue Mini Station Anfrage</h2>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Name</td>
-              <td style="padding: 10px; border-bottom: 1px solid #eee;">${name}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">E-Mail</td>
-              <td style="padding: 10px; border-bottom: 1px solid #eee;">${email}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Kontaktzeit</td>
-              <td style="padding: 10px; border-bottom: 1px solid #eee;">${preferred_time}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; font-weight: bold;">Angebot</td>
-              <td style="padding: 10px; color: ${isFreeOffer ? '#00C896' : '#888'};">
-                ${isFreeOffer ? '✅ Gratis-Paket (€0 statt €3.899)' : '📩 Allgemeine Anfrage'}
-              </td>
-            </tr>
-          </table>
-          <p style="color: #888; font-size: 12px; margin-top: 20px;">
-            Registrierung #${(count ?? 0) + 1} von ${CAP}
-          </p>
-        </div>
+        <h2>Neue Mini Station Anmeldung</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>E-Mail:</strong> ${email}</p>
+        <p><strong>Kontaktzeit:</strong> ${preferred_time}</p>
+        <p><strong>Angebot:</strong> ${isFreeOffer ? '✅ Gratis-Paket' : '📩 Allgemeine Anfrage'}</p>
+        <p><strong>Platz Nr.:</strong> ${(count ?? 0) + 1} von 100</p>
       `,
     });
 
-    return new Response(JSON.stringify({ success: true, isFreeOffer }), { status: 200, headers });
+    return res.status(200).json({
+      success: true,
+      is_free_offer: isFreeOffer,
+      message: isFreeOffer
+        ? 'Erfolgreich registriert! Sie erhalten das kostenlose Paket.'
+        : 'Anfrage erhalten! Wir melden uns bei Ihnen.',
+    });
   }
 
-  return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
+  // 5. Método no permitido
+  return res.status(405).json({ error: 'Method not allowed' });
 }
