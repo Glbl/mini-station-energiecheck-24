@@ -7,30 +7,39 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://energiecheck-24.myshopify.com',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://energiecheck-24.myshopify.com',
+  'https://admin.shopify.com',
+];
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+function getCorsHeaders(req: NextRequest) {
+  const origin = req.headers.get('origin') ?? '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 }
 
-export async function GET() {
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: getCorsHeaders(req) });
+}
+
+export async function GET(req: NextRequest) {
   const { count, error } = await supabase
     .from('mini_station_leads')
     .select('*', { count: 'exact', head: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: getCorsHeaders(req) });
   }
 
-  return NextResponse.json({ count: count ?? 0 }, { headers: corsHeaders });
+  return NextResponse.json({ count: count ?? 0 }, { headers: getCorsHeaders(req) });
 }
 
 export async function POST(req: NextRequest) {
-  // ✅ Resend se inicializa AQUÍ dentro, no fuera
   const resend = new Resend(process.env.RESEND_API_KEY_2!);
 
   const body = await req.json();
@@ -39,7 +48,7 @@ export async function POST(req: NextRequest) {
   if (!name || !email || !preferred_time) {
     return NextResponse.json(
       { error: 'Alle Felder sind erforderlich.' },
-      { status: 400, headers: corsHeaders }
+      { status: 400, headers: getCorsHeaders(req) }
     );
   }
 
@@ -57,12 +66,12 @@ export async function POST(req: NextRequest) {
     if (insertError.code === '23505') {
       return NextResponse.json(
         { error: 'Diese E-Mail ist bereits registriert.' },
-        { status: 409, headers: corsHeaders }
+        { status: 409, headers: getCorsHeaders(req) }
       );
     }
     return NextResponse.json(
       { error: insertError.message },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: getCorsHeaders(req) }
     );
   }
 
@@ -79,29 +88,29 @@ export async function POST(req: NextRequest) {
       <p><strong>Platz Nr.:</strong> ${(count ?? 0) + 1} von 100</p>
     `,
   });
-  // Email 2 — Confirmación al cliente (nuevo)
-await resend.emails.send({
-  from: 'Energiecheck 24 <noreply@energiecheck-24.de>',
-  to: email,
-  subject: '✅ Ihre Anmeldung wurde erhalten – Mini Station',
-  html: `
-    <h2>Hallo ${name},</h2>
-    <p>Vielen Dank für Ihre Anmeldung zum kostenlosen Mini Station Testprogramm!</p>
-    ${isFreeOffer
-      ? `<p>🎉 <strong>Glückwunsch!</strong> Sie gehören zu den ersten 100 Teilnehmern und erhalten das komplette Paket kostenlos.</p>`
-      : `<p>Wir haben Ihre Anfrage erhalten und melden uns so bald wie möglich bei Ihnen.</p>`
-    }
-    <p><strong>Ihre Angaben:</strong></p>
-    <ul>
-      <li>Name: ${name}</li>
-      <li>Bevorzugte Kontaktzeit: ${preferred_time}</li>
-    </ul>
-    <p>Mit freundlichen Grüßen,<br>Das Energiecheck-24 Team</p>
-  `,
-});
+
+  await resend.emails.send({
+    from: 'Energiecheck 24 <noreply@energiecheck-24.de>',
+    to: email,
+    subject: '✅ Ihre Anmeldung wurde erhalten – Mini Station',
+    html: `
+      <h2>Hallo ${name},</h2>
+      <p>Vielen Dank für Ihre Anmeldung zum kostenlosen Mini Station Testprogramm!</p>
+      ${isFreeOffer
+        ? `<p>🎉 <strong>Glückwunsch!</strong> Sie gehören zu den ersten 100 Teilnehmern und erhalten das komplette Paket kostenlos.</p>`
+        : `<p>Wir haben Ihre Anfrage erhalten und melden uns so bald wie möglich bei Ihnen.</p>`
+      }
+      <p><strong>Ihre Angaben:</strong></p>
+      <ul>
+        <li>Name: ${name}</li>
+        <li>Bevorzugte Kontaktzeit: ${preferred_time}</li>
+      </ul>
+      <p>Mit freundlichen Grüßen,<br>Das Energiecheck-24 Team</p>
+    `,
+  });
 
   return NextResponse.json(
     { success: true, is_free_offer: isFreeOffer },
-    { headers: corsHeaders }
+    { headers: getCorsHeaders(req) }
   );
 }
