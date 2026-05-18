@@ -8,35 +8,28 @@ const supabase = createClient(
 );
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-  'https://energiecheck-24.myshopify.com',
-  'https://admin.shopify.com',
-];
-
-function getCorsHeaders(req: NextRequest) {
-  const origin = req.headers.get('origin') ?? '';
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+function getCorsHeaders() {
   return {
-    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 }
 
-export async function OPTIONS(req: NextRequest) {
-  return NextResponse.json({}, { headers: getCorsHeaders(req) });
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: getCorsHeaders() });
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const { count, error } = await supabase
     .from('mini_station_leads')
     .select('*', { count: 'exact', head: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500, headers: getCorsHeaders(req) });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: getCorsHeaders() });
   }
 
-  return NextResponse.json({ count: count ?? 0 }, { headers: getCorsHeaders(req) });
+  return NextResponse.json({ count: count ?? 0 }, { headers: getCorsHeaders() });
 }
 
 export async function POST(req: NextRequest) {
@@ -48,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!name || !email || !preferred_time) {
     return NextResponse.json(
       { error: 'Alle Felder sind erforderlich.' },
-      { status: 400, headers: getCorsHeaders(req) }
+      { status: 400, headers: getCorsHeaders() }
     );
   }
 
@@ -66,12 +59,12 @@ export async function POST(req: NextRequest) {
     if (insertError.code === '23505') {
       return NextResponse.json(
         { error: 'Diese E-Mail ist bereits registriert.' },
-        { status: 409, headers: getCorsHeaders(req) }
+        { status: 409, headers: getCorsHeaders() }
       );
     }
     return NextResponse.json(
       { error: insertError.message },
-      { status: 500, headers: getCorsHeaders(req) }
+      { status: 500, headers: getCorsHeaders() }
     );
   }
 
@@ -111,6 +104,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(
     { success: true, is_free_offer: isFreeOffer },
-    { headers: getCorsHeaders(req) }
+    { headers: getCorsHeaders() }
   );
 }
