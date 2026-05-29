@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
       {
         source: '/api/:path*',
         headers: [
-          { key: 'Access-Control-Allow-Origin', value: 'https://energiecheck-24.myshopify.com' },
+          { key: 'Access-Control-Allow-Origin', value: 'https://shop.energiecheck-24.de' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'Content-Type' },
         ],
