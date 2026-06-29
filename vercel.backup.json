@@ -1,5 +1,5 @@
 {
-  "heade  qwrs": [
+  "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
